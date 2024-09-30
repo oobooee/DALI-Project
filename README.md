@@ -8,4 +8,4 @@ The goal for using AutoHotkey was to easly simulate the injection of events (ins
 is mandatory to update Windows Sicstus path inside the startmas.bat file.
 2. Edit the startmas.ahk and lunch it, or start the startmas.bat file.
 3. Attached you can find demo videos of a typical situation or a faulty situation where the task assigned to a faulty agent has been replaced by a functional one.
-4. 
+   
