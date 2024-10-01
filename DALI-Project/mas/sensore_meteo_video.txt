@@ -1,0 +1,113 @@
+
+:- dynamic rasaerba_impegnati/1, associazione_rasaerba_piano/2.
+
+
+
+rasaerba_impegnati([]).  
+associazione_rasaerba_piano([], []).
+
+operativoE(Rasaerba, Piano) :> 
+    write('Ricevuto messaggio operativo da: '), write(Rasaerba), write(Piano),  nl,
+    aggiorna_lista_rasaerba_impegnati(Rasaerba),
+    aggiorna_associazione_rasaerba_piano(Rasaerba, Piano).
+
+
+guastoE(Rasaerba, Piano) :> 
+		write('ricevuto guasto da centralina. Il raseraba: '), 
+		write(Rasaerba), write(' e guasto_____completare'),nl,
+	    rimuovi_associazione_rasaerba_piano(Rasaerba).
+
+aggiorna_associazione_rasaerba_piano(Rasaerba, Piano) :-
+    retractall(associazione_rasaerba_piano(Rasaerba, _)),  
+    assert(associazione_rasaerba_piano(Rasaerba, Piano)),  
+    write('Associazione aggiornata: Rasaerba '), write(Rasaerba), write(' -> Piano '), write(Piano), nl.
+
+
+rimuovi_associazione_rasaerba_piano(Rasaerba) :-
+    retractall(associazione_rasaerba_piano(Rasaerba, _)),  
+    write('Associazione rasaerba-piano rimossa per il rasaerba: '), write(Rasaerba), nl.
+
+trova_rasaerba_per_zona(Zona, Rasaerba) :-
+    ( associazione_rasaerba_piano(Rasaerba, Zona) ->
+        true
+    ; 
+        Rasaerba = none
+    ).
+
+aggiorna_lista_rasaerba_impegnati(Rasaerba) :-
+    rasaerba_impegnati(Lista),
+    \+ member(Rasaerba, Lista),  
+    append([Rasaerba], Lista, NuovaLista),
+    retract(rasaerba_impegnati(Lista)),
+    assert(rasaerba_impegnati(NuovaLista)),
+    write('Lista rasaerba impegnati aggiornata: '), write(NuovaLista), nl.
+
+aggiorna_lista_rasaerba_impegnati(Rasaerba) :-
+    rasaerba_impegnati(Lista),
+    member(Rasaerba, Lista),
+	write('Lista rasaerba impegnati aggiornata: '), write(Lista), nl.
+
+
+invia_notifica_a_rasaerba_attivi(Evento) :- 
+    rasaerba_impegnati(ListaRasaerba), nl, write('------->'),write(ListaRasaerba),write('------->'),write(Evento),nl,
+	invia_notifiche(ListaRasaerba, Evento).
+
+invia_notifiche([], Evento) :- nl,
+    write('Tutte le notifiche sono state inviate.'), nl.
+
+invia_notifiche([Rasaerba|AltriRasaerba], pioggia) :- nl,nl,
+    write('Inviando notifica a '), write(Rasaerba), write(' --> Pioggia <--'), nl,
+    messageA(Rasaerba, send_message(pioggia, Me)),
+    invia_notifiche(AltriRasaerba, pioggia).
+
+invia_notifiche([Rasaerba|AltriRasaerba], sole) :- nl,nl,
+    write('Inviando notifica a '), write(Rasaerba), write(' --> SOLE <--'), nl,
+    messageA(Rasaerba, send_message(sole, Me)),
+    invia_notifiche(AltriRasaerba, sole).
+	
+invia_notifiche([Rasaerba|AltriRasaerba], area_libera) :- nl,nl,
+    write('Inviando notifica a '), write(Rasaerba), write(' --> Aarea_libera <--'), nl,
+    messageA(Rasaerba, send_message(area_libera, Me)),
+    invia_notifiche(AltriRasaerba, area_libera).
+
+invia_notifiche([], _) :- 
+    write('Tutte le notifiche sono state inviate.'), nl.
+
+invia_notifiche_presenza_umana(Rasaerba, Zona) :- nl,nl,
+    write('Inviando notifica di presenza alla zona '), write(Zona), write(' al rasaerba: '), write(Rasaerba), nl,
+    messageA(Rasaerba, send_message(presenza_umana(Zona), Me)).
+	
+pioggiaE :> 
+    write('-------> Pioggia rilevata! Inviando notifiche ai rasaerba attivi...'), nl,
+    invia_notifica_a_rasaerba_attivi(pioggia).
+
+soleE :> 
+    write('-------> Sole! Inviando notifiche ai rasaerba attivi...'), nl,
+    invia_notifica_a_rasaerba_attivi(sole).
+
+
+
+presenzaumanaE(Zona) :> 
+    write('-------> Notifica video Presenza rilevata nella zona '), write(Zona), nl,
+    trova_rasaerba_per_zona(Zona, Rasaerba),
+    ( Rasaerba \= none -> 
+        invia_notifiche_presenza_umana(Rasaerba, Zona),
+        write('Notifica inviata al rasaerba: '), write(Rasaerba), nl
+    ; 
+        write('Nessun rasaerba sta operando nella zona.'), nl
+    ).
+
+area_liberaE :> 
+    write('-------> Area libera da 5 min! Inviando notifiche ai rasaerba attivi...'), nl,
+    invia_notifica_a_rasaerba_attivi(area_libera).
+
+presenzaumana___E(Zona) :>
+    write('Notifica video: Presenza rilevata nella zona '), write(Zona), nl,
+    messageA(_, cancel(avvia_taglio(Zona), Me),Val), write(Val).
+
+pioggia__E :> 
+    write('Notifica meteo: Pioggia rilevata! Inviando notifiche ai rasaerba attivi...'), nl,
+    messageA(_, confirm(pioggia(si), Me)).
+
+	
+

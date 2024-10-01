@@ -1,0 +1,166 @@
+:- dynamic disponibili/1, pianificazione_tagli_on/1, comandi_accensione/1, stato_iniziale/1.
+
+
+
+pianificazione_tagli([area1, area2, area3, area4, area5, area6]).
+pianificazione_tagli_speciali([pianoS1, pianoS2, pianoS3]).
+
+rasaerba([rasaerba, rasaerba1, rasaerba2]).
+comandi_accensione(non_inviati).
+stato_iniziale(off).
+
+
+
+power_on :- stato_iniziale(off).
+power_onI :> retract(stato_iniziale(off)), 
+			assert(stato_iniziale(on)), write('Power on'), nl,
+			spentoA.
+			
+onE :- accesoP, write('ignora_on'),nl.
+onE :> spentoP, write('spento accendi'), accesoA, drop_pastA(spento),nl,
+		pianificazione_tagli(Piani),
+		assert(pianificazione_tagli_on(Piani)).
+
+
+offE :- spentoP, write('ignora_off'),nl.
+offE :> accesoP, write(' acceso.. spegni'), nl,
+		spentoA, drop_pastA(acceso),
+		inizializza_lista_disponibili,
+		retract(comandi_accensione(inviati)),
+		asserta(comandi_accensione(non_inviati)), 
+		retract(stato_iniziale(on)),
+		assert(stato_iniziale(off)),
+		retractall(pianificazione_tagli_on(_)).
+		
+busyE(Rasaerba) :> write('busy'), write(Rasaerba),nl.
+
+readyE(Rasaerba) :- assegna_piani_rasaerba_disponibiliP, 
+					aggiorna_lista_disponibili(Rasaerba),
+					assegna_piani_rasaerba_disponibiliA.
+readyE(Rasaerba) :> 
+    write('Ricevuto ready da '), write(Rasaerba), nl,
+    aggiorna_lista_disponibili(Rasaerba).
+	
+faultE(Rasaerba, Piano) :> 
+    write('Fault ricevuto da: '), write(Rasaerba), nl,
+    write('Piano non completato: '), write(Piano), nl,
+	messageA(sensore_meteo_video, send_message(guasto(Rasaerba, Piano), Me)),
+    aggiungi_piano_non_completato(Piano).
+
+
+timer_taglio_giornalieroE :> 
+    write('Timer taglio giornaliero innescato'), nl,
+    assegna_piani_rasaerba_disponibiliA.
+
+
+
+
+assegna_piani_rasaerba_disponibiliI :-
+    disponibili(ListaRasaerba),
+    pianificazione_tagli_on(Piani),
+    (Piani \= [] ->  
+        assegna_piani_rasaerba(ListaRasaerba, Piani), nl
+    ; 
+        write('Non ci sono piu piani da assegnare.'), nl,
+        retractall(assegna_piani_rasaerba_disponibili),  retractall(pianificazione_tagli), standby, nl).
+
+assegna_piani_rasaerba([], _) :- 
+    write('Assegnati piani residui a rasaerba disponibili'), nl.
+
+standby :- write('STANDBY'), standbyA.
+
+assegna_piani_rasaerba([Rasaerba|AltriRasaerba], [Piano|AltriPiani]) :-
+    write('Assegnato piano di taglio: '), write(Piano), write(' a '), write(Rasaerba), nl,
+    messageA(Rasaerba, send_message(comando_taglia_erba(Piano), Me)),
+	messageA(sensore_meteo_video, send_message(operativo(Rasaerba, Piano), Me)),
+    retract(disponibili([Rasaerba|_])),  
+    assert(disponibili(AltriRasaerba)),    
+    retract(pianificazione_tagli_on([Piano|_])),
+    assert(pianificazione_tagli_on(AltriPiani)), 
+	
+	stampa_lista_tagli_residui,
+    
+	assegna_piani_rasaerba(AltriRasaerba, AltriPiani).
+
+
+
+
+aggiungi_piano_non_completato(Piano) :-
+    pianificazione_tagli_on(PianiAttuali), 
+    append(PianiAttuali, [Piano], NuoviPiani),  
+    retract(pianificazione_tagli_on(PianiAttuali)),  
+    assert(pianificazione_tagli_on(NuoviPiani)),    
+    write('Piano '), write(Piano), write(' aggiunto alla lista dei piani non completati'), nl,
+	stampa_lista_tagli_residui.
+	
+stampa_lista_tagli_residui :- nl,
+	write('-----------------------------'),nl,
+    pianificazione_tagli_on(PianiResidui),
+    write('Lista piani di taglio residui: '), write(PianiResidui), nl,
+	write('-----------------------------'),nl.
+				
+	
+
+
+	
+controlla_se_STARTED :- accesoP, 
+			comandi_accensione(non_inviati), nl, 
+			write('acceso'), sleep(2).
+controlla_se_STARTEDI :> rasaerba(ListaRasaerba), 
+			invia_comando_START(ListaRasaerba).
+	
+invia_comando_START([]) :-
+    nl, write('Tutti i comandi di accensione sono stati inviati.'), nl,
+	retractall(comandi_accensione(non_inviati)),
+	asserta(comandi_accensione(inviati)).
+
+invia_comando_START([Rasaerba|Altri]) :-
+	inizializza_lista_disponibili,
+    nl, write('Invio comando di accensione a '), write(Rasaerba), nl,
+    messageA(Rasaerba, send_message(start, Me)),
+    invia_comando_START(Altri).
+
+
+
+
+inizializza_lista_disponibili :- nl, write('inizializza lista disponibili'),nl,
+    retractall(disponibili(_)),
+    assert(disponibili([])).
+	
+aggiorna_lista_disponibili(Rasaerba) :-
+    disponibili(Lista),
+    (   
+        member(Rasaerba, Lista)  
+    ->  
+        nl, write('Rasaerba gia presente nella lista: '), write(Rasaerba), nl, 
+		write('Lista rasaerba disponibili aggiornata: '), write(disponibili(Lista)),nl
+    ;   
+  
+        append([Rasaerba], Lista, NuovaLista),
+        retract(disponibili(Lista)), 
+        assert(disponibili(NuovaLista)), nl,
+        write('Lista rasaerba disponibili aggiornata: '), write(NuovaLista), nl
+    ).
+
+
+
+
+
+proponi_se_disponibilii_taglio_fastE :> proponi_taglio_fastA, write('proponi'),nl.
+proponi_taglio_fastI :> 
+    disponibili(ListaRasaerba),nl,
+    write('Richiesta taglio fast.. verifica disponibili'), nl,
+    invia_proposta_taglio_fast(ListaRasaerba),nl.
+
+invia_proposta_taglio_fast([]) :- 
+    write('Tutte le proposte di taglio rapido sono state inviate.'), nl.
+
+invia_proposta_taglio_fast([Rasaerba|Altri]) :-
+    write('Invio proposta di taglio rapido a '), write(Rasaerba), nl,
+    messageA(Rasaerba, propose(proposta_taglio_fast, [disponibile], Me)),
+    invia_proposta_taglio_fast(Altri).
+	
+
+accept_proposal(A, B, C) :- write('proposta').
+comando_taglia_erba_fastE :- disponibileP(Rasaerba), accesoP.		
+comando_taglia_erba_fastE :> write('comando_taglia_erba'),messageA(Rasaerba,send_message(comando_taglia_erba_fast, Me)).
