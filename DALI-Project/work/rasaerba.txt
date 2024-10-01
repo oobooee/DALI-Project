@@ -1,0 +1,126 @@
+:- dynamic asserisci_ontologia/3.
+:- dynamic contatore_ritorno/1.
+
+
+
+
+
+startE:> readyA.
+readyI :> messageA(centralina, send_message(ready(Me), Me)).
+
+
+pioggiaE :- sospendi_attivitaP(pioggia), write('pioggia ...sto gia tornando alla base'),nl,!.
+pioggiaE :> write('evento pioggia rilevato'), sospendi_attivitaA(pioggia).
+
+
+
+soleE :- \+avvia_taglioP(_), \+sospendi_attivitaP(_), write(' Sole splende'), nl.
+soleE :> write('sole rilevato'), drop_pastA(sospendi_attivita(_)), avvia_taglioP(Piano), write(Piano), avvia_taglioA(Piano), drop_pastA(avvia_taglio(Piano)).
+
+
+presenza_umanaE(Zona) :- \+avvia_taglioP(_), write('-------> Presnza umana, taglio non in corso.'), nl.
+presenza_umanaE(Zona) :- sospendi_attivitaP(_), write('-------> Presnza umana, sospensione gia in corso '), nl.
+presenza_umanaE(Zona) :>  write('evento pioggia rilevato'), sospendi_attivitaA(presenza_umana), spegni_lameA, write('--- BLOCCO LAME ----').
+
+
+area_liberaE :- \+avvia_taglioP(_), \+sospendi_attivitaP(_), write(' Area libera'), nl.
+area_liberaE :> write('area libera da 5 minuti'), drop_pastA(spegni_lame), drop_pastA(sospendi_attivita(_)), avvia_taglioP(Piano), write(Piano), avvia_taglioA(Piano), drop_pastA(avvia_taglio(Piano)).
+
+comando_taglia_erbaE(Piano) :- sospendi_attivitaP(Causa), 
+						write('ignoro comando taglia erba'),nl,!.
+comando_taglia_erbaE(Piano) :- busyP, 
+						write('busy....'),nl,!.
+comando_taglia_erbaE(Piano) :> write('ricevuto comando taglia erba'), nl, 
+						avvia_taglioA(Piano).
+
+
+avvia_taglio(Piano) :<
+    controlli_preliminari, 
+    !.                      
+
+avvia_taglio(Piano) :<
+    write('Controlli falliti, invio fault a centralina'), nl,
+    invia_fault(Piano),     
+    false.                  
+
+
+invia_fault(Piano) :-
+    write('Fault nel piano: '), write(Piano), nl,
+    messageA(centralina, send_message(fault(Me, Piano), Me)).
+
+avvia_taglioI(Piano) :-
+    write('Inizio taglio per il piano: '), write(Piano), nl,
+    busyA,                   
+    nl,write('_________________'),nl,write('TAGLIO IN CORSO.....'),nl,write('_________________'),nl.
+				
+
+sospendi_attivita(Causa) :< avvia_taglioP(Piano), write('sospensione coerente...'), nl.
+sospendi_attivitaI(Causa) :>  write('Il piano'), write(Piano), write(' si interrompe causa'), write(Causa), nl, alla_baseA, nl.
+
+alla_baseI :>  nl, drop_pastA(busy), drop_pastA(ritorna_alla_base), drop_pastA(alla_base), ritorna_alla_baseA.
+
+
+
+tagliocompletatoE :- \+avvia_taglioP(Piano), write('Taglio non in corso'),!.
+tagliocompletatoE :> avvia_taglioP(Piano), tagliocompA(Piano).
+
+tagliocompI(Piano) :>  write('taglio completato'), drop_pastA(busy), drop_pastA(avvia_taglio(Piano)), drop_pastA(tagliocomp(Piano)),  nl, nl, sleep(1), write('Alla base: PRONTO'),nl, retractall(busy), readyI.
+
+
+
+
+asserisci_ontologia(Ag, Condizioni, Proposta) :- write('Proposta ricevuta da '), write(Ag), nl,
+					write('condizioni: '),nl,
+					write(' per azione: '), write(Proposta), Proposta, nl,write('--------------'),nl.
+
+proposta_taglio_fast :- \+busyP, 
+						write('taglio fast proposto...'), 
+						messageA(Ag,accept_proposal(Proposta, Condizioni, Me)), !.
+						
+proposta_taglio_fast :- messageA(Ag,reject_proposal(Proposta, Condizioni, Me)), nl, 
+						write('prop rifiutata'), nl.	
+						
+
+
+simula_fault(Tipo, Soglia) :-
+    random(1, 100, Esito),write(Esito),write('___'),
+    (   
+        Esito < Soglia  
+    ->  
+        write(Tipo), write(' ok'), nl, true
+    ;   
+        write('GUASTO a '), write(Tipo), nl, 
+        false
+    ).
+
+
+controlli_preliminari :- 
+    write('controlli in corso'), nl, 
+    simula_fault(batteria, 99),  
+    simula_fault(alimentazione, 99), 
+    simula_fault(lame, 99), 
+    nl.
+
+
+ritorna_alla_baseI :- nl, write('-------------'),
+    write('Inizio ritorno alla base...'), nl,
+	random(2, 6, Temporitorno), 
+	write(Temporitorno),
+    assert(contatore_ritorno(ritorno_alla_base, Temporitorno)), 
+    ciclo_ritorno(ritorno_alla_base), 
+	write('Rasaerba tornato alla base!'), nl.
+	
+
+ciclo_ritorno(Ops) :-
+    contatore_ritorno(Ops, T),
+    T > 0,
+    write('Ciclo'), write(Ops), write(' in corso.. tempo residuo stimato : '), write(T), write(' secondi'), nl,
+    retract(contatore_ritorno(Ops, T)),
+    T1 is T - 1,
+    assert(contatore_ritorno(Ops, T1)),
+    sleep(1), ciclo_ritorno(Ops).
+
+ciclo_ritorno(Ops) :-
+    contatore_ritorno(Ops, 0),
+	write('Ciclo '), write(Ops), write(' completata.'), nl,
+    retract(contatore_ritorno(Ops, 0)).

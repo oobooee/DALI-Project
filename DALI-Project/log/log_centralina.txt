@@ -1,0 +1,2 @@
+make(spento)
+make(assegna_piani_rasaerba_disponibili)
